@@ -13,6 +13,10 @@ Willkommen zur offiziellen Dokumentation von RepoReader. Diese Seiten geben eine
 - [Datenschutz](privacy.md)
 - [Roadmap](roadmap.md)
 - [Änderungshistorie](changelog.md)
+ - Architektur Details: [Schichten](architecture/layers.md)
+ - Entwicklung & Beiträge (Contribution Guide) (development.md)
+ - Sicherheit (security.md)
+ - Internationalisierung (i18n.md)
 
 ## Einführung & Ziele
 RepoReader ist ein schlanker, privatsphärenfreundlicher GitHub Repository Reader mit folgenden Kernzielen:

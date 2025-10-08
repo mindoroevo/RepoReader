@@ -81,4 +81,6 @@ flutter {
 dependencies {
     // Core library desugaring für neuere Java APIs (java.time etc.)
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // Play Core Library (benötigt weil Flutter Embedding SplitCompat-Klassen referenziert → R8 Missing Class Fix)
+    implementation("com.google.android.play:core:1.10.3")
 }

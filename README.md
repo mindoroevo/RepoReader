@@ -51,6 +51,7 @@ _TL;DR:_ README-/Dokunavigation • Alle Dateien (flach + Baum) • Universeller
 30. [Lizenz](#lizenz)
 31. [Credits](#credits)
 32. [Internationalisierung (i18n)](#internationalisierung-i18n)
+33. [Vorlese-Funktion (Text-to-Speech)](#vorlese-funktion-text-to-speech)
 
 ---
 
@@ -813,6 +814,96 @@ Pflegeprozess bei neuen Features:
 | Setup Erweiterung | Token / Device Flow Strings hinzugefügt |
 | FileType Dialog | Kategorien + Dialogschlüssel ergänzt |
 | Konsolidierung | Separate i18n Markdown Dateien entfernt, README erweitert |
+
+---
+
+## Vorlese-Funktion (Text-to-Speech)
+
+Die integrierte Vorlese-Funktion macht längere Dokumentationsabschnitte hörbar und unterstützt Fokus‑/Unterwegs‑Szenarien.
+
+### 1. Ziele
+| Ziel | Umsetzung |
+|------|-----------|
+| Schneller Einstieg | Ein Klick auf Play liest gesamtes Dokument (aktueller Tab) |
+| Kontexttreue | Absatz-/Satzgrenzen bleiben erhalten (Chunking) |
+| Feiner Start | Start-Slider erlaubt Versatz über Wortindex / Absatzzuordnung |
+| Mehrsprachigkeit | Verwendet vorhandene Locale + auswählbare Stimmen |
+| Geräuscharm | Kurze Sätze werden gemerged + minimale Pausen zwischen Chunks |
+| Persistenz | Rate, Pitch, Modus, Sprache & Stimme werden gespeichert |
+
+### 2. UI Elemente
+| Element | Beschreibung |
+|---------|--------------|
+| Play (Start) | Startet Vorlesen ab Dokumentanfang oder gewähltem Wort |
+| Stop | Sofortiger Abbruch & Reset Status |
+| Sprache / Stimme Dropdown | Gefilterte Liste verfügbarer Engine-Sprachen & Voices (Favoriten / Flaggen) |
+| Speed Slider | Anpassung der Sprechgeschwindigkeit (persistiert) |
+| Pitch Slider | Stimmhöhe (persistiert) |
+| Modus (intern) | Chunking-Modi: Wörter, Sätze, Blöcke (Absätze) |
+| Start bei Wort Slider | Definiert Wortindex; für Sätze/Blöcke wird automatisch an Anfang des entsprechenden Satzes / Absatzes gesprungen |
+| Absatz-Vorschau | Zeigt Textauszug des Absatzes, der beim aktuellen Slider‑Wert vorgelesen wird |
+
+### 3. Chunking Modi
+| Modus | Strategien | Einsatz |
+|-------|------------|--------|
+| words | Gruppen von 20 Wörtern (konstante Länge) | Präziser Wiedereinstieg / Debug |
+| sentences | Regex Split an Satzendzeichen, sehr kurze Sätze werden mit folgendem kombiniert (<25 Zeichen) | Natürliche Prosodie |
+| blocks | Absatzbasiert (Doppel‑Newlines). Lange Absätze werden weich an Wortgrenzen gesplittet (~200–220 Zeichen) | Dokumentationskapitel |
+
+### 4. Startversatz & Absatzlogik
+Der Slider berechnet zunächst einen Wortindex im bereinigten Plaintext. Für words wird exakt ab diesem Wort begonnen; für sentences/blocks wird der Chunk ermittelt, der das Wort enthält – der Chunk wird vollständig vorgelesen (kein abgeschnittener Satz / Absatz). Dadurch wirkt der Einstieg natürlicher.
+
+### 5. Persistenz Keys
+| Key | Bedeutung |
+|-----|-----------|
+| `tts:rate` | Sprechgeschwindigkeit |
+| `tts:pitch` | Stimmlage |
+| `tts:mode` | Ausgewählter Chunk-Modus (Index) |
+| `tts:lang` | Letzte Sprache (Locale) |
+| `tts:voice` | Letzte ausgewählte Stimme |
+
+### 6. Audio Qualität (Knacken Minimierung)
+| Maßnahme | Wirkung |
+|----------|--------|
+| Merging kurzer Sätze | Weniger harte Engine-Re-Initialisierungen |
+| 60ms Delay zwischen Chunks | Weichere Übergänge, reduziert Knackgeräusche |
+| Konsistente Gruppengröße (words) | Gleichmäßiger Ausgabefluss |
+
+Geplant: Adaptive Pausen basierend auf Satzlänge, optional SSML (sofern Engine unterstützt), einstellbares Zwischen-Silence.
+
+### 7. Grenzen & Edge Cases
+| Fall | Verhalten |
+|------|-----------|
+| Inline Code / Backticks | Vorlesen entfernt Formatierung (bereinigt) |
+| Große Tabellen | Linearisiert als Text (evtl. monotone Aufzählung) |
+| Emojis | Entfernt / ersetzt (kein TTS Name Call) |
+| Sprachwechsel im Dokument | Kein automatischer Locale Switch pro Abschnitt |
+
+### 8. Erweiterungsideen (Roadmap Ergänzung)
+| Idee | Nutzen |
+|------|-------|
+| Wort-Highlighting im Scrolltext | Visueller Sync beim Hören |
+| Fortschritts-Sprungmarken (Absatzliste) | Kapitelnavigation auditiv |
+| Export als Audio (lokal) | Offline Hörversionen |
+| Dynamik-Anpassung (AGC) | Lautstärke-Konsistenz |
+| Satz-/Absatz-Zähler Overlay | Orientierung bei langen Dokus |
+
+### 9. Entwickler Hinweise
+Zentrale Implementierung: `TtsService` (`lib/services/tts_service.dart`).
+| Methode / Feld | Zweck |
+|----------------|------|
+| `start(fullText, startWord, overrideMode)` | Baut Chunks + initialisiert Wiedergabe |
+| `_buildChunks()` | Chunking Strategie je Modus |
+| `_cleanText()` | Entfernt Markdown / Inline Artefakte für robustes TTS |
+| `currentChunk` / `currentWord` (ValueNotifier) | UI Bindings für Fortschritt / Highlight |
+
+Fehlertoleranz: Sprache / Voice werden beim Init re-gesetzt; wenn nicht verfügbar -> Engine default (kann stumm wirken falls keine passende Stimme). Geplant: Fallback-Kaskade (z.B. de-DE → de → en-US).
+
+### 10. Nutzung Quick Demo
+1. Dokument öffnen.
+2. Play drücken → gesamter Inhalt ab Anfang.
+3. Für späteren Einstieg: Dialog öffnen → Slider bewegen → „Ab hier vorlesen“ (Dialog schließt automatisch).
+4. Geschwindigkeit & Pitch anpassen → Werte werden sofort persistiert.
 
 ---
 

@@ -5,6 +5,7 @@
 // Description: App Einstieg – Initialisierung von Theme & SharedPreferences.
 // ============================================================================
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 /// main.dart – App Einstieg
@@ -24,6 +25,13 @@ import 'localization_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // System UI konfigurieren - Navigationsleiste ausblenden
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.immersiveSticky,
+    overlays: [SystemUiOverlay.top],
+  );
+  
   final prefs = await SharedPreferences.getInstance();
   
   // Theme Mode laden

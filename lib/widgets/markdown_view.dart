@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'dart:io';
 import '../services/offline_snapshot_service.dart';
 
@@ -18,7 +17,8 @@ import '../services/offline_snapshot_service.dart';
 class MarkdownView extends StatelessWidget {
   final String content;
   final void Function(String internalPath)? onInternalLink;
-  const MarkdownView({super.key, required this.content, this.onInternalLink});
+  final ScrollController? controller;
+  const MarkdownView({super.key, required this.content, this.onInternalLink, this.controller});
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +43,7 @@ class MarkdownView extends StatelessWidget {
       code: TextStyle(
         fontSize: 13 * (MediaQuery.of(context).textScaler.scale(1.0)),
         fontFamily: 'monospace',
-  backgroundColor: theme.colorScheme.surfaceContainerHighest.withAlpha((255 * .35).round()),
+        backgroundColor: theme.colorScheme.surfaceContainerHighest.withAlpha((255 * .35).round()),
       ),
       horizontalRuleDecoration: BoxDecoration(
         border: Border(
@@ -67,6 +67,7 @@ class MarkdownView extends StatelessWidget {
     return Markdown(
       data: content,
       selectable: true,
+      controller: controller,
       onTapLink: (text, href, title) async {
         if (href == null) return;
         if (href.startsWith('http://') || href.startsWith('https://')) {
@@ -80,7 +81,6 @@ class MarkdownView extends StatelessWidget {
       },
       softLineBreak: true,
       styleSheet: base,
-  // Bilddarstellung: eigener Builder (runde Ecken + Fallback Icon bei Fehlern)
       // ignore: deprecated_member_use
       imageBuilder: (uri, title, alt) => FutureBuilder<bool>(
         future: OfflineSnapshotService.isOfflineEnabled(),
@@ -91,39 +91,29 @@ class MarkdownView extends StatelessWidget {
             color: theme.colorScheme.errorContainer.withAlpha((255 * .9).round()),
             child: const Icon(Icons.broken_image),
           );
-          // Offline: versuche lokale Datei (relative Pfade im Repo)
-            if (offline && !uri.toString().startsWith('http')) {
-              return FutureBuilder<String>(
-                future: () async {
-                  try {
-                    // Zugriff direkt auf Snapshot-Datei
-                    // Wir kennen hier nicht den Root-Pfad, daher laden wir einmal hasSnapshot
-                    if (!await OfflineSnapshotService.hasSnapshot()) {
-                      throw Exception('Kein Snapshot');
-                    }
-                    // heuristisch: uri.path ohne führenden Slash
-                    final rel = uri.toString().replaceAll(RegExp(r'^/'), '');
-                    final root = await OfflineSnapshotService.currentSnapshotRootPath();
-                    final f = File('$root/files/$rel');
-                    if (await f.exists()) return f.path;
-                    throw Exception('Nicht gefunden');
-                  } catch (_) {
-                    rethrow;
-                  }
-                }(),
-                builder: (context, fileSnap) {
-                  if (fileSnap.connectionState != ConnectionState.done) {
-                    return const SizedBox(height: 40, width: 40, child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
-                  }
-                  if (fileSnap.hasError || fileSnap.data == null) return error();
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.file(File(fileSnap.data!), fit: BoxFit.cover, errorBuilder: (_, __, ___) => error()),
-                  );
-                },
-              );
-            }
-          // Online normal
+          if (offline && !uri.toString().startsWith('http')) {
+            return FutureBuilder<String>(
+              future: () async {
+                try {
+                  if (!await OfflineSnapshotService.hasSnapshot()) { throw Exception('Kein Snapshot'); }
+                  final rel = uri.toString().replaceAll(RegExp(r'^/'), '');
+                  final root = await OfflineSnapshotService.currentSnapshotRootPath();
+                  final f = File('$root/files/$rel');
+                  if (await f.exists()) return f.path; throw Exception('Nicht gefunden');
+                } catch (_) { rethrow; }
+              }(),
+              builder: (context, fileSnap) {
+                if (fileSnap.connectionState != ConnectionState.done) {
+                  return const SizedBox(height: 40, width: 40, child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
+                }
+                if (fileSnap.hasError || fileSnap.data == null) return error();
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(File(fileSnap.data!), fit: BoxFit.cover, errorBuilder: (_, __, ___) => error()),
+                );
+              },
+            );
+          }
           return ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Image.network(
@@ -134,9 +124,7 @@ class MarkdownView extends StatelessWidget {
           );
         },
       ),
-      builders: const {},
-      // shrinkWrap keeps layout predictable when used inside other scrollables (we now use it as root with RefreshIndicator)
-      shrinkWrap: true,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
     );
   }
 }

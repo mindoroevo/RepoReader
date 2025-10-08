@@ -1,6 +1,5 @@
 name: reporeader
 description: "Live GitHub Repo Documentation & File Viewer."
-author: "Mindoro Evolution <mindoro.evolution@gmail.com>"
 # repository: https://github.com/<your-org>/<repo>  # optional
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -48,6 +47,8 @@ dependencies:
   flutter_local_notifications: ^17.2.1
   # Für Offline-Snapshot Dateispeicherung
   path_provider: ^2.1.4
+  # Text-To-Speech
+  flutter_tts: ^4.0.2
 
 dev_dependencies:
   flutter_test:

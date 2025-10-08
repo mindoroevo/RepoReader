@@ -1,0 +1,41 @@
+Copyright (c) 2025 <Dein Name>
+
+Lizenz: Eingeschränkt – Nutzung & Modifikation erlaubt, öffentliches Re-Hosting verboten
+=======================================================================
+
+Ziel dieser Lizenz: Du darfst den Code lokal verwenden, anpassen und intern verteilen –
+aber NICHT öffentlich (z.B. auf GitHub, GitLab, Bitbucket, Gists, Package-Repositories oder
+App Stores) erneut hochladen oder als eigenes Projekt veröffentlichen.
+
+Erlaubt:
+ 1. Lokale Ausführung und Nutzung für interne oder persönliche Zwecke.
+ 2. Eigene Änderungen / Forks ausschließlich privat (lokal oder in privaten, nicht frei zugänglichen Repositories).
+ 3. Interne Weitergabe innerhalb eines Teams / Unternehmens in geschlossenen Systemen.
+ 4. Erstellung abgeleiteter Versionen für den Eigengebrauch (ohne Veröffentlichung).
+
+Verboten (ohne vorherige schriftliche Zustimmung):
+ 1. Öffentliches Re-Hosting (Forks, Mirrors, Uploads) des Originalcodes oder abgeleiteter Werke.
+ 2. Veröffentlichung in offenen Repositories, App Stores oder vergleichbaren Plattformen.
+ 3. Nutzung zur Bereitstellung eines öffentlichen Dienstes (SaaS) unter eigenem Branding.
+ 4. Entfernung oder Veränderung von Copyright-/Hinweisblöcken.
+ 5. Automatisierte Massenweitergabe oder Einbettung als Teil eines frei verbreiteten Bundles.
+
+Klarstellungen:
+ * "Privat" bedeutet: Zugriff nur für dich oder klar abgegrenzte interne Mitarbeitende.
+ * Backups/CI-Build-Artefakte sind zulässig, sofern nicht öffentlich zugänglich.
+ * Du darfst Code-Ausschnitte lokal für Lernzwecke kommentieren / modifizieren.
+ * Kommerzielle direkte Verwertung (Verkauf der Software oder als Dienst) ist NICHT gestattet
+	 ohne vorherige schriftliche Erlaubnis (separat lizenzierbar).
+
+Optionale Freigabe später:
+Der Rechteinhaber kann die Software zukünftig unter einer Open-Source-Lizenz erneut veröffentlichen.
+Diese eingeschränkte Lizenz gewährt keine Ansprüche auf zukünftige Öffnung.
+
+Haftungsausschluss / Gewährleistung:
+Die Software wird "wie besehen" bereitgestellt – ohne ausdrückliche oder implizite Gewährleistung.
+Nutzung auf eigenes Risiko. Der Rechteinhaber haftet nicht für direkte oder indirekte Schäden,
+Folgeschäden oder entgangenen Gewinn.
+
+Kontakt für Ausnahme-/Kommerz-Lizenz: <Kontakt E-Mail einsetzen>
+
+Version: 1.1 (2025-10-06)

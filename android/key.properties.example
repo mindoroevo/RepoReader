@@ -1,0 +1,8 @@
+# Beispiel-Konfig für Release Signatur.
+# Diese Datei NICHT committen (nur .example Variante bleibt im Repo).
+# Kopiere zu android/key.properties und fülle Passwörter aus.
+
+storeFile=keystore/reporeader-release.keystore
+storePassword=DEIN_STORE_PASSWORT
+keyAlias=reporeader
+keyPassword=DEIN_KEY_PASSWORT

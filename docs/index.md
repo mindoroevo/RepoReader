@@ -7,16 +7,21 @@ Willkommen zur offiziellen Dokumentation von RepoReader. Diese Seiten geben eine
 - [Einführung & Ziele](#einfuhrung--ziele)
 - [Feature-Überblick](features.md)
 - [Architektur](architecture.md)
-- [Benutzung & Guides](guides/usage.md)
-- [Offline Snapshot & Caching](guides/offline.md)
-- [TTS (Vorlese-Funktion)](guides/tts.md)
+  - [Schichten](architecture/layers.md)
+- Benutzung & Guides
+  - [Grundbenutzung](guides/usage.md)
+  - [Suche (Basis + Erweitert)](guides/search.md)
+  - [Universeller Datei-Browser](guides/file_browser.md)
+  - [Offline Snapshot & Caching](guides/offline.md)
+  - [TTS (Vorlese-Funktion)](guides/tts.md)
+  - [Änderungs-Polling & Benachrichtigungen](guides/notifications.md)
+  - [Device Flow (GitHub Login)](guides/device_flow.md)
 - [Datenschutz](privacy.md)
 - [Roadmap](roadmap.md)
 - [Änderungshistorie](changelog.md)
- - Architektur Details: [Schichten](architecture/layers.md)
- - Entwicklung & Beiträge (Contribution Guide) (development.md)
- - Sicherheit (security.md)
- - Internationalisierung (i18n.md)
+  - Entwicklung & Beiträge (Contribution Guide) ([development.md](development.md))
+  - Sicherheit ([security.md](security.md))
+  - Internationalisierung ([i18n.md](i18n.md))
 
 ## Einführung & Ziele
 RepoReader ist ein schlanker, privatsphärenfreundlicher GitHub Repository Reader mit folgenden Kernzielen:

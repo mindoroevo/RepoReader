@@ -22,6 +22,20 @@ class NotificationService {
     const darwinInit = DarwinInitializationSettings();
     final init = InitializationSettings(android: androidInit, iOS: darwinInit, macOS: darwinInit, linux: LinuxInitializationSettings(defaultActionName: 'Öffnen'));
     await _plugin.initialize(init);
+    // Request permissions where needed
+    try {
+      if (Platform.isAndroid) {
+        final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        // On Android 13+ a runtime permission is required
+        await android?.requestNotificationsPermission();
+      } else if (Platform.isIOS) {
+        final ios = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+        await ios?.requestPermissions(alert: true, badge: true, sound: true);
+      } else if (Platform.isMacOS) {
+        final mac = _plugin.resolvePlatformSpecificImplementation<MacOSFlutterLocalNotificationsPlugin>();
+        await mac?.requestPermissions(alert: true, badge: true, sound: true);
+      }
+    } catch (_) {}
     if (Platform.isAndroid) {
       const channel = AndroidNotificationChannel(
         'changes', 'Änderungen',

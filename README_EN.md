@@ -51,6 +51,11 @@ _TL;DR:_ README / documentation navigation • All files (flat + tree) • Unive
 30. [License](#license)
 31. [Credits](#credits)
 32. [Internationalization (i18n)](#internationalization-i18n)
+33. [Tips & Onboarding](#tips--onboarding)
+34. [Universal File Browser](#universal-file-browser)
+35. [Advanced Search (Details)](#advanced-search-details)
+36. [Change Polling & Notifications](#change-polling--notifications)
+37. [Device Flow (GitHub Login)](#device-flow-github-login)
 
 ---
 
@@ -688,3 +693,82 @@ LanguageSwitcher  ─▶ LocalizationController ─▶ SharedPreferences
 | Consolidation | Removed separate i18n docs; merged into README |
 
 ---
+
+## Tips & Onboarding
+
+Short one-time tips make features discoverable without cluttering the UI.
+
+- Components
+  - `lib/widgets/tips_overlay.dart`: semi-transparent overlay tour with target highlight and Skip/Next/Done.
+  - `lib/services/tips_service.dart`: persistence of shown tips (`pref:tips:<key>`).
+  - Integrated in `home_shell.dart` (home tips), `page_screen.dart` (page tips), `setup_screen.dart` (setup tips).
+- Onboarding
+  - One-time welcome flow (`pref:onboardingSeen`) triggered if no source is configured.
+  - Afterwards opens the setup input; PAT is optional.
+- Reset
+  - Show tips again: delete `pref:tips:*`; re-show onboarding: delete `pref:onboardingSeen`. Full reset via Setup → “Wipe all”.
+
+---
+
+## Universal File Browser
+
+Overview of ALL repository files (text and binary) with filtering, search and quick preview.
+
+- Screen: `lib/screens/universal_file_browser_screen.dart`
+- Viewer: `lib/widgets/universal_file_viewer.dart`
+- Listing/typing: `lib/services/universal_file_reader.dart` (+ `WikiService`)
+- Features
+  - Category grouping or flat list; search by name/path; “text only” filter.
+  - Stats (visible/total count, approximate total size).
+  - Quick preview dialog and full detail view.
+- Notes
+  - PDFs show a placeholder + download/copy actions; code highlighting planned.
+
+---
+
+## Advanced Search (Details)
+
+Combines content and filename/path search over all files with category filter and progressive results.
+
+- Screen: `lib/screens/enhanced_search_screen.dart`
+- Filters & UI
+  - Chips: Content, Filename, Text only; Category selector (internal sentinel `'ALL_INTERNAL'` for “all”).
+  - Snippets: context window with highlighted matches (rendered as RichText).
+- Algorithm
+  - O(n·m): n files, m terms (AND). Content is loaded only for text files.
+  - Progressive updates in batches; new input cancels running searches.
+- Data sources
+  - Files via `WikiService.listAllFiles(..)`/`listTextFiles(..)`; content via `fetchFileByPath(..)`.
+
+---
+
+## Change Polling & Notifications
+
+Periodic check for changes with exponential backoff and optional system notifications.
+
+- Flow
+  - Controlled in `lib/screens/home_shell.dart`: minute ticker; base interval `pref:pollMinutes` (default 5).
+  - Backoff: doubles effective interval every 5 “no change” cycles (up to 8× base).
+  - Detection/details via `ChangeTrackerService` (`lib/services/change_tracker_service.dart`).
+- Notifications
+  - `NotificationService` shows platform notifications (Android/iOS/Desktop), guarded by permission where required.
+  - Preference `pref:notifyChanges` (default on).
+- Relevant preferences
+  - `pref:pollMinutes`, `pref:notifyChanges`, `pref:showChangeDialog`.
+
+---
+
+## Device Flow (GitHub Login)
+
+Alternative to manual PAT entry using GitHub Device Authorization Flow—no client secret required.
+
+- Components
+  - Service: `lib/services/private_auth_service.dart` (start/poll, secure storage)
+  - WebView screen: `lib/screens/device_login_webview.dart` (or external browser fallback)
+  - Setup integration: `lib/screens/setup_screen.dart` (token is transferred into the field and saved to `cfg:token`).
+- Requirements
+  - Build-time: `--dart-define=GITHUB_CLIENT_ID=<client_id>`.
+- Flow
+  - Start → show code/URL → open verification page → poll until token granted → store token → apply in setup → save.
+- Security
+  - Fine‑grained read-only scope recommended (Contents: Read). Token stored via secure storage.

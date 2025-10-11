@@ -52,6 +52,12 @@ _TL;DR:_ README-/Dokunavigation • Alle Dateien (flach + Baum) • Universeller
 31. [Credits](#credits)
 32. [Internationalisierung (i18n)](#internationalisierung-i18n)
 33. [Vorlese-Funktion (Text-to-Speech)](#vorlese-funktion-text-to-speech)
+34. [Android Release Build & Signierung](#android-release-build--signierung)
+35. [Tipps & Onboarding](#tipps--onboarding)
+36. [Universeller Datei-Browser](#universeller-datei-browser)
+37. [Erweiterte Suche (Detail)](#erweiterte-suche-detail)
+38. [Änderungs-Polling & Benachrichtigungen](#änderungs-polling--benachrichtigungen)
+39. [Device Flow (GitHub Login)](#device-flow-github-login)
 
 ---
 
@@ -899,6 +905,49 @@ Zentrale Implementierung: `TtsService` (`lib/services/tts_service.dart`).
 
 Fehlertoleranz: Sprache / Voice werden beim Init re-gesetzt; wenn nicht verfügbar -> Engine default (kann stumm wirken falls keine passende Stimme). Geplant: Fallback-Kaskade (z.B. de-DE → de → en-US).
 
+## Android Release Build & Signierung
+Kurzleitfaden für ein signiertes App Bundle (AAB) – vollständige Details in `docs/build_android_signing.md`.
+
+### Schritte (Kurz)
+1. Keystore erzeugen (einmalig):
+	```powershell
+	mkdir android\keystore 2>$null
+	keytool -genkeypair -v -keystore android\keystore\reporeader-release.keystore -alias reporeader -keyalg RSA -keysize 2048 -validity 10000
+	```
+2. `android/key.properties` anlegen/füllen:
+	```
+	storeFile=keystore/reporeader-release.keystore
+	storePassword=<STORE_PASSWORT>
+	keyAlias=reporeader
+	keyPassword=<KEY_PASSWORT>
+	```
+3. Version erhöhen in `pubspec.yaml` (`version: x.y.z+CODE`).
+4. Build:
+	```powershell
+	flutter clean
+	flutter pub get
+	flutter build appbundle --release
+	```
+5. Upload: `build/app/outputs/bundle/release/app-release.aab` in Play Console.
+6. Google Play App Signing aktivieren (empfohlen).
+
+### Automatisiertes Script
+```powershell
+./scripts/build_release.ps1 -VersionName 0.1.1 -VersionCode 2
+```
+Script aktualisiert Version & baut AAB.
+
+### Häufige Fehler (Kurz)
+| Problem | Ursache | Lösung |
+|---------|---------|--------|
+| Debug signed | `key.properties` fehlt / Fallback aktiv | Datei mit echten Werten anlegen |
+| Version Code exists | versionCode nicht erhöht | `pubspec.yaml` anpassen |
+| Keystore tampered | Passwort falsch | Richtige Passwörter prüfen |
+| Missing classes (R8) | Shrinking aktiviert ohne Rules | Shrinking deaktivieren oder ProGuard Rules ergänzen |
+
+### Sicherheit
+Keystore & Passwörter niemals committen. Sicheres Backup (Password Manager + Offsite Kopie). Bei Leak: Rotation & neuen Upload Key.
+
 ### 10. Nutzung Quick Demo
 1. Dokument öffnen.
 2. Play drücken → gesamter Inhalt ab Anfang.
@@ -907,4 +956,83 @@ Fehlertoleranz: Sprache / Voice werden beim Init re-gesetzt; wenn nicht verfügb
 
 ---
 
+## Tipps & Onboarding
 
+Kurze, einmalig eingeblendete Hinweise erleichtern den Einstieg und erklären neue UI‑Funktionen.
+
+- Komponenten
+  - `lib/widgets/tips_overlay.dart`: halbtransparente Overlay‑Tour mit Zielmarkierung und „Skip/Next/Done“.
+  - `lib/services/tips_service.dart`: Persistenzschicht (`pref:tips:<key>`), steuert Einmal‑Anzeige.
+  - Integration: `lib/screens/home_shell.dart` (Home‑Tipps), `lib/screens/page_screen.dart` (Seiten‑Tipps), `lib/screens/setup_screen.dart` (Setup‑Tipps).
+- Onboarding
+  - Einmaliger Begrüßungsfluss (`pref:onboardingSeen`), Start aus `lib/screens/home_shell.dart` bei fehlender Konfiguration.
+  - Setup öffnet danach die Quelleingabe. Token kann optional ergänzt werden.
+- Zurücksetzen
+  - Tipps erneut anzeigen: `pref:tips:*` löschen; Onboarding erneut zeigen: `pref:onboardingSeen` entfernen. Komplett‑Reset über Setup → „Alles löschen“.
+
+---
+
+## Universeller Datei-Browser
+
+Ermöglicht einen Überblick über ALLE Dateien eines Repos (Text und Binär) mit Filtern, Kategorien und Vorschau.
+
+- Datei/Screen: `lib/screens/universal_file_browser_screen.dart`
+- Kernfunktionen
+  - Kategorien oder flache Liste, schnelle Textsuche (Name/Pfad), „Nur Text“-Filter.
+  - Statistik (Anzahl sichtbar/gesamt, geschätzte Gesamtgröße).
+  - Vorschau‑Dialog und Detailansicht mit `UniversalFileViewer` (`lib/widgets/universal_file_viewer.dart`).
+- Datengrundlage
+  - Listing via `WikiService.listAllFiles()`; Typ/Gruppe aus `UniversalRepoEntry.category` (`lib/services/universal_file_reader.dart`).
+- Hinweise
+  - PDF wird als Platzhalter angezeigt; Download/Kopie unterstützt. Syntax‑Highlighting ist auf der Roadmap.
+
+---
+
+## Erweiterte Suche (Detail)
+
+Kombiniert Inhalts‑ und Dateinamensuche über alle Dateien mit Kategorie‑Filter und progressiven Ergebnissen.
+
+- Datei/Screen: `lib/screens/enhanced_search_screen.dart`
+- Filter und UI
+  - Chips: Inhalt, Dateiname, Nur‑Text; Kategorie‑Wahl (interne Kennung `'ALL_INTERNAL'` für „alle“).
+  - Snippets: Kontextfenster mit Markierung der Treffer (« »), Rendering als `RichText`.
+- Algorithmik
+  - O(n·m): n Dateien, m Suchterme (UND‑Verknüpfung), Inhalte nur bei Textdateien geladen.
+  - Progressive UI‑Updates in Batches, Abbruch über Token bei neuer Eingabe.
+- Datenquellen
+  - Files je nach Filter aus `WikiService.listAllFiles(..)`/`listTextFiles(..)`; Inhalte via `fetchFileByPath(..)`.
+
+---
+
+## Änderungs-Polling & Benachrichtigungen
+
+Zeitbasierte Prüfung auf geänderte Dateien mit Backoff‑Strategie und optionalen System‑Notifications.
+
+- Ablauf
+  - Start/Steuerung in `lib/screens/home_shell.dart`: Minutenticker, Basiseinstellung `pref:pollMinutes` (Default 5).
+  - Backoff: Verdopplung des effektiven Intervalls alle 5 „keine Änderung“-Zyklen, bis maximal x8 des Basiswerts.
+  - Erkennung/Details via `ChangeTrackerService` (`lib/services/change_tracker_service.dart`).
+- Benachrichtigungen
+  - `NotificationService` (`lib/services/notification_service.dart`) zeigt systemweite Hinweise (Android/iOS/Desktop).
+  - Präferenz `pref:notifyChanges` (Default an). Auf Android 13+ wird Laufzeit‑Permission angefragt.
+- Relevante Präferenzen
+  - `pref:pollMinutes`, `pref:notifyChanges`, `pref:showChangeDialog`.
+
+---
+
+## Device Flow (GitHub Login)
+
+Alternative zur manuellen Token‑Eingabe über GitHub Device Authorization Flow. Ohne Client Secret.
+
+- Komponenten
+  - `lib/services/private_auth_service.dart`: Start (`startDeviceFlow`), Polling (`pollForDeviceToken`), Secure Storage (`flutter_secure_storage`).
+  - `lib/screens/device_login_webview.dart`: Eingebettete Verifikationsseite (WebView) oder externer Browser‑Fallback.
+  - Integration in Setup: `lib/screens/setup_screen.dart` (Übernahme des Tokens ins Eingabefeld; Speichern persistiert es in `cfg:token`).
+- Voraussetzungen
+  - Build‑Zeit Umgebungsvariable: `--dart-define=GITHUB_CLIENT_ID=<client_id>`.
+- Ablauf (Kurz)
+  - Flow starten → Code/URL anzeigen → Verifikation öffnen → periodisch pollend auf Token warten → Token sicher speichern → in Setup übernehmen → Speichern.
+- Sicherheit
+  - Token liegt verschlüsselt (Secure Storage). App nutzt es nur für Read‑Zugriff (empfohlene Fine‑grained Permission: „Contents: Read“).
+
+---

@@ -68,6 +68,23 @@ class AboutScreen extends StatelessWidget {
           Text(l10n.license, style: style.titleSmall),
           const SizedBox(height: 4),
           Text(l10n.licenseText),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.menu_book),
+              label: Text(l10n.openLicense),
+              onPressed: () async {
+                final uri = Uri.parse('https://github.com/mindoroevo/RepoReader/blob/main/README.md#lizenz');
+                final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                if (!ok && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Konnte Link nicht öffnen: $uri')),
+                  );
+                }
+              },
+            ),
+          ),
           const SizedBox(height: 16),
           Text(l10n.version, style: style.titleSmall),
           const SizedBox(height: 4),

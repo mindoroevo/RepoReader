@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../services/wiki_service.dart';
 import '../utils/naming.dart';
 import '../utils/markdown_preprocess.dart';
 import '../utils/toc.dart';
 import '../services/tts_service.dart';
 import '../widgets/markdown_view.dart';
+import '../widgets/tips_overlay.dart';
+import '../services/tips_service.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 /// PageScreen
 /// ==========
@@ -26,10 +30,48 @@ class _PageScreenState extends State<PageScreen> {
   bool _fromCache = false;
   bool _loading = true;
   String? _error;
-  bool _ttsDialogOpen = false;
-  TtsMode _mode = TtsMode.sentences;
+  // TTS
+  final _tts = TtsService.instance;
+  List<String> _availableLanguages = [];
+  String? _selectedLanguage;
+  List<String> _availableVoices = [];
+  List<Map<String,String>> _parsedVoices = [];
+  String? _selectedVoiceId;
+  bool _speaking = false;
+  bool _paused = false;
+  bool _sliderActive = false;
+  // UI-configurable TTS params
+  double _uiRate = 0.5;
+  double _uiPitch = 1.0;
+  int _uiChunkPause = 180;
+  int _uiParagraphPause = 450;
+  bool _uiUseParagraphPause = true;
+  bool _showAllVoices = false;
+  bool _controlsExpanded = false;
 
-  @override void initState() { super.initState(); _load(); }
+  @override
+  void initState() { super.initState(); _load(); WidgetsBinding.instance.addPostFrameCallback((_) async { if (mounted && await TipsService.shouldShow('page')) { _showPageTips(); } });
+    // Keep local UI flags in sync with service status
+    _tts.status.addListener(_onTtsStatusChanged);
+  }
+
+  void _onTtsStatusChanged(){
+    final s = _tts.status.value;
+    if (!mounted) return;
+    setState((){
+      _speaking = s.playing;
+      _paused = s.paused;
+    });
+  }
+
+  @override
+  void dispose() {
+    try { _tts.status.removeListener(_onTtsStatusChanged); } catch (_) {}
+    // Do NOT stop TTS automatically on dispose; user may want background playback
+    // or control via app-level UI. Removing the unconditional stop prevents
+    // accidental interruptions when the page is disposed.
+    super.dispose();
+  }
 
   /// Lädt den Markdown-Text, führt Preprocessing (Normalisierung & Link/Bild-Umsetzung)
   /// durch und baut anschließend das TOC. Fehler werden im State gespeichert.
@@ -45,51 +87,201 @@ class _PageScreenState extends State<PageScreen> {
     } finally { setState(() => _loading = false); }
   }
 
+  Future<void> _ensureTtsReady() async {
+    // Only enable TTS on Android/iOS/web. Desktop (Windows/macOS/Linux) support
+    // for flutter_tts may be missing or cause native crashes; guard against that.
+    final supported = kIsWeb || defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
+    if (!supported) return;
+    try {
+      // Initialize and load available languages from singleton service
+      final langsDyn = await _tts.availableLanguages();
+      final langs = langsDyn.map((e) => e.toString()).toList();
+      setState(() {
+        _availableLanguages = langs;
+        // prefer document locale or device locale
+        if (_availableLanguages.contains('de-DE')) _selectedLanguage = 'de-DE';
+        else if (_availableLanguages.contains('en-US')) _selectedLanguage = 'en-US';
+        else if (_availableLanguages.isNotEmpty) _selectedLanguage = _availableLanguages.first;
+      });
+      // load voices as well
+      try {
+        final rawVoices = await _tts.availableVoices();
+        final parsed = rawVoices.map((e){
+          if (e is Map) {
+            final nameRaw = (e['name'] ?? e['voice'] ?? e['id'] ?? e['label'] ?? '').toString();
+            final locale = (e['locale'] ?? e['localeId'] ?? e['lang'] ?? '').toString();
+            final id = nameRaw.isNotEmpty ? nameRaw : e.toString();
+            final label = _formatVoiceLabel(id, locale);
+            return {'id': id, 'label': label, 'locale': locale};
+          }
+          final s = e.toString();
+          return {'id': s, 'label': s, 'locale': ''};
+        }).toList();
+        setState(()=> _parsedVoices = parsed.cast<Map<String,String>>());
+        setState(()=> _availableVoices = parsed.map((v)=> v['id'] as String).toList());
+  if (_selectedVoiceId == null && parsed.isNotEmpty) _selectedVoiceId = parsed.first['id'] as String;
+  // read defaults from service (rate/pitch) and persisted pause values
+  _uiRate = _tts.rate;
+  _uiPitch = _tts.pitch;
+  _uiChunkPause = _tts.chunkPauseMs;
+  _uiParagraphPause = _tts.paragraphPauseMs;
+  _uiUseParagraphPause = _tts.paragraphPauseMs > 0;
+      } catch (_) {}
+    } catch (_) {}
+  }
 
-  @override
+  // pause defaults are static unless user changes them from UI
+
+  void _updateSelectedVoiceForLanguage(){
+    if (_parsedVoices.isEmpty) return;
+    if (_selectedLanguage == null) return;
+    final pref = _selectedLanguage!.split('-').first.toLowerCase();
+    final byLocale = _parsedVoices.where((v) => (v['locale'] ?? '').toLowerCase().startsWith(pref)).toList();
+    if (byLocale.isNotEmpty) {
+      setState(()=> _selectedVoiceId = byLocale.first['id']);
+    }
+  }
+
+  String _formatVoiceLabel(String id, String locale){
+    // e.g. de-de-x-nfh-local -> try to extract a human-readable short name
+    final parts = id.split('-');
+    String short = id;
+    if (parts.length >= 3) {
+      short = parts.sublist(2).join('-');
+    } else if (parts.length == 2) {
+      short = parts[1];
+    }
+    short = short.replaceAll(RegExp(r'[_\.]'), ' ').trim();
+    if (locale.isNotEmpty) return '${locale.toUpperCase()} — ${_capitalize(short)}';
+    return _capitalize(short);
+  }
+
+  String _capitalize(String s){ if (s.isEmpty) return s; return s[0].toUpperCase()+s.substring(1); }
+
+
   Widget build(BuildContext context) {
     final displayTitle = prettifyTitle(widget.title);
     return Scaffold(
       appBar: AppBar(
-        title: Text(displayTitle),
+        titleSpacing: 6,
+        actionsIconTheme: const IconThemeData(size: 18),
+        title: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Text(
+            displayTitle,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.visible,
+          ),
+        ),
         actions: [
+          // Toggle controls panel
           IconButton(
-            tooltip: 'TTS Optionen',
-            icon: const Icon(Icons.record_voice_over),
-            onPressed: _content.trim().isEmpty ? null : _openTtsDialog,
+            tooltip: _controlsExpanded ? 'Steuerung einklappen' : 'Steuerung ausklappen',
+            icon: Icon(_controlsExpanded ? Icons.expand_less : Icons.expand_more),
+            iconSize: 18,
+            padding: const EdgeInsets.all(4),
+            onPressed: () => setState(() => _controlsExpanded = !_controlsExpanded),
           ),
-          ValueListenableBuilder(
-            valueListenable: TtsService.instance.status,
-            builder: (context, st, _) {
-              if (!st.playing) {
-                return IconButton(
-                  tooltip: 'Keine Wiedergabe aktiv',
-                  icon: const Icon(Icons.stop_outlined),
-                  onPressed: null,
-                );
-              }
-              return Row(children: [
-                IconButton(
-                  tooltip: st.paused ? 'Weiter' : 'Pause',
-                  icon: Icon(st.paused ? Icons.play_arrow : Icons.pause),
-                  onPressed: () => st.paused ? TtsService.instance.resume() : TtsService.instance.pause(),
-                ),
-                IconButton(
-                  tooltip: 'Stop',
-                  icon: const Icon(Icons.stop),
-                  onPressed: () => TtsService.instance.stop(),
-                ),
-              ]);
-            },
-          ),
-          if (_toc.isNotEmpty)
-            IconButton(
-              tooltip: 'Inhalt',
-              icon: const Icon(Icons.list_alt),
-              onPressed: () => _openToc(context),
-            ),
           if (_fromCache) const Padding(padding: EdgeInsets.only(right: 12), child: Center(child: Text('Offline')))
         ],
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(_controlsExpanded ? 48 : 0),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeInOut,
+            height: _controlsExpanded ? 48 : 0,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: (_controlsExpanded)
+                ? ValueListenableBuilder(
+                    valueListenable: _tts.status,
+                    builder: (context, TtsStatus s, _) {
+                      final playing = s.playing;
+                      final paused = s.paused;
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Open TTS dialog
+                          IconButton(
+                            key: _kTtsOpenBtn,
+                            tooltip: 'Vorlesen',
+                            icon: const Icon(Icons.volume_up),
+                            iconSize: 18,
+                            padding: const EdgeInsets.all(4),
+                            onPressed: () => _openTtsDialog(),
+                          ),
+                          const SizedBox(width: 6),
+                          // Play
+                          IconButton(
+                            key: _kPlayBtn,
+                            tooltip: 'Start Vorlesen',
+                            icon: const Icon(Icons.play_arrow),
+                            iconSize: 20,
+                            padding: const EdgeInsets.all(4),
+                            onPressed: (!_sliderActive)
+                                ? () async {
+                                    try {
+                                      final paragraphMs = _uiUseParagraphPause ? _uiParagraphPause : 0;
+                                      await _tts.configure(
+                                        language: _selectedLanguage,
+                                        voiceId: _selectedVoiceId,
+                                        rate: _uiRate,
+                                        pitch: _uiPitch,
+                                        chunkPauseMs: _uiChunkPause,
+                                        paragraphPauseMs: paragraphMs,
+                                      );
+                                      await _tts.start(_plainMarkdown());
+                                    } catch (e, st) { debugPrint('Main Play error: $e\n$st'); }
+                                  }
+                                : null,
+                          ),
+                          const SizedBox(width: 6),
+                          // Pause
+                          IconButton(
+                            key: _kPauseBtn,
+                            tooltip: 'Pause',
+                            icon: const Icon(Icons.pause),
+                            iconSize: 18,
+                            padding: const EdgeInsets.all(4),
+                            onPressed: (playing && !paused) ? () async { try { await _tts.pause(); } catch (e, st) { debugPrint('pause error: $e\n$st'); } } : null,
+                          ),
+                          const SizedBox(width: 6),
+                          // Stop
+                          IconButton(
+                            key: _kStopBtn,
+                            tooltip: 'Stop',
+                            icon: const Icon(Icons.stop),
+                            iconSize: 18,
+                            padding: const EdgeInsets.all(4),
+                            onPressed: playing ? () async { try { await _tts.stop(); } catch (e, st) { debugPrint('stop error: $e\n$st'); } } : null,
+                          ),
+                          const SizedBox(width: 10),
+                          // TOC (if available)
+                          if (_toc.isNotEmpty)
+                            IconButton(
+                              key: _kTocBtn,
+                              tooltip: 'Inhalt',
+                              icon: const Icon(Icons.list_alt),
+                              iconSize: 18,
+                              padding: const EdgeInsets.all(4),
+                              onPressed: () => _openToc(context),
+                            ),
+                          const SizedBox(width: 6),
+                          // Help
+                          IconButton(
+                            tooltip: 'Hilfe',
+                            icon: const Icon(Icons.help_outline),
+                            iconSize: 18,
+                            padding: const EdgeInsets.all(4),
+                            onPressed: _showPageTips,
+                          ),
+                        ],
+                      );
+                    })
+                : const SizedBox.shrink(),
+          ),
+        ),
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -141,6 +333,31 @@ class _PageScreenState extends State<PageScreen> {
     );
   }
 
+  // --- Tips ---
+  final _kTocBtn = GlobalKey();
+  final _kTtsOpenBtn = GlobalKey();
+  final _kPlayBtn = GlobalKey();
+  final _kPauseBtn = GlobalKey();
+  final _kStopBtn = GlobalKey();
+  Future<void> _showPageTips() async {
+    final l = AppLocalizations.of(context)!;
+    await showTipsOverlay(
+      context,
+      tips: [
+        // Controls
+        TipTarget(key: _kTtsOpenBtn, title: 'Vorlesen', body: 'Einstellungen für Stimme, Tempo und Tonhöhe öffnen.'),
+        TipTarget(key: _kPlayBtn, title: 'Start', body: 'Startet das Vorlesen. Wenn Text markiert ist, wird nur die Auswahl gelesen.'),
+        TipTarget(key: _kPauseBtn, title: 'Pause', body: 'Pausiert die Wiedergabe.'),
+        TipTarget(key: _kStopBtn, title: 'Stop', body: 'Beendet die Wiedergabe.'),
+        if (_toc.isNotEmpty) TipTarget(key: _kTocBtn, title: l.tipPageTocTitle, body: l.tipPageTocBody),
+      ],
+      skipLabel: l.onbSkip,
+      nextLabel: l.onbNext,
+      doneLabel: l.onbDone,
+    );
+    await TipsService.markShown('page');
+  }
+
   /// Zeigt das Inhaltsverzeichnis als Bottom-Sheet.
   void _openToc(BuildContext context) {
     showModalBottomSheet(
@@ -184,182 +401,177 @@ class _PageScreenState extends State<PageScreen> {
   String _plainMarkdown() => _content; // Cleaning passiert im Service
 
   Future<void> _openTtsDialog() async {
-    if (_ttsDialogOpen) return; _ttsDialogOpen = true;
-    final tts = TtsService.instance;
-    final langs = await tts.availableLanguages();
-  final voicesRaw = await tts.availableVoices();
+    final l = AppLocalizations.of(context)!;
+    await _ensureTtsReady();
     if (!mounted) return;
-  String? selLang = tts.language ?? (langs.isNotEmpty ? langs.first : null);
-  // Sprache aus App übernehmen falls noch nicht gesetzt
-  selLang ??= Localizations.localeOf(context).languageCode;
-  String? selVoice = tts.voiceId;
-  double rate = tts.rate;
-  double pitch = tts.pitch;
-    showModalBottomSheet(
+
+    // Use a dialog to avoid bottom-sheet drag gesture interfering with sliders
+    await showDialog<void>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setSt) {
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.record_voice_over),
-                      const SizedBox(width: 8),
-                      Text('Vorlesen', style: Theme.of(ctx).textTheme.titleMedium),
-                      const Spacer(),
-                      DropdownButton<TtsMode>(
-                        value: _mode,
-                        onChanged: (m){ if (m!=null) setSt(()=> _mode=m); },
-                        items: const [
-                          DropdownMenuItem(value: TtsMode.words, child: Text('Wörter')),
-                          DropdownMenuItem(value: TtsMode.sentences, child: Text('Sätze')),
-                          DropdownMenuItem(value: TtsMode.blocks, child: Text('Blöcke')),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _LanguageDropdown(
-                    languages: langs.cast<String>(),
-                    value: selLang,
-                    onChanged: (v){ setSt(()=> selLang = v); },
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: selVoice,
-                    decoration: const InputDecoration(labelText: 'Voice (optional)'),
-                    items: [
-                      for (final v in voicesRaw.cast<dynamic>())
-                        if (v is Map && v['name']!=null && (selLang==null || (v['locale']?.toString().startsWith(selLang!) ?? true)))
-                          DropdownMenuItem(value: v['name'], child: Text(v['name'])),
-                    ],
-                    onChanged: (v){ setSt(()=> selVoice = v); },
-                  ),
-                  const SizedBox(height: 12),
-                  Row(children:[const Text('Speed'), Expanded(child: Slider(min:0.2,max:1.0,value: rate,onChanged:(val){ setSt(()=> rate=val);}) ), SizedBox(width:46, child: Text(rate.toStringAsFixed(2), textAlign: TextAlign.right))]),
-                  Row(children:[const Text('Pitch'), Expanded(child: Slider(min:0.5,max:2.0,value: pitch,onChanged:(val){ setSt(()=> pitch=val);}) ), SizedBox(width:46, child: Text(pitch.toStringAsFixed(2), textAlign: TextAlign.right))]),
-                  ValueListenableBuilder(
-                    valueListenable: tts.status,
-                    builder: (context, st, _) => st.playing ? Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: LinearProgressIndicator(value: st.total==0? null : st.index / st.total),
-                    ) : const SizedBox(height: 8),
-                  ),
-                  ValueListenableBuilder(
-                    valueListenable: tts.currentWord,
-                    builder: (context, w, _) => w==null? const SizedBox.shrink() : Padding(
-                      padding: const EdgeInsets.only(top:4,bottom:4),
-                      child: Text(w, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  // Start-Offset (Wortindex) Slider
-                  Builder(builder: (ctx2){
-                    final plain = _plainMarkdown();
-                    final cleanedWords = plain
-                        .replaceAll(RegExp(r'\s+'), ' ')
-                        .trim()
-                        .split(' ')
-                        .where((w)=>w.isNotEmpty)
-                        .toList();
-                    int startIndex = 0;
-                    return StatefulBuilder(builder: (ctx3,setInner){
-                      return Column(
-                        children: [
-                          if (cleanedWords.length > 30)
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(child: Text('Start bei Wort: $startIndex / ${cleanedWords.length}', style: Theme.of(context).textTheme.labelMedium)),
-                                    Text('${((startIndex/cleanedWords.length)*100).round()}%', style: Theme.of(context).textTheme.labelSmall),
-                                  ],
-                                ),
-                                Slider(
-                                  min:0,
-                                  max:(cleanedWords.length-1).toDouble(),
-                                  value:startIndex.toDouble(),
-                                  divisions: cleanedWords.length-1,
-                                  label: cleanedWords[startIndex],
-                                  onChanged:(v){ setInner(()=> startIndex=v.round()); },
-                                ),
-                                Builder(builder: (_) {
-                                  // Paragraph Mapping: finde Paragraph, der dieses Wort enthält
-                                  final paraRaw = plain.split(RegExp(r'\n{2,}'));
-                                  int wordCursor = 0;
-                                  String? paragraphText;
-                                  for (final raw in paraRaw) {
-                                    final wordsInPara = raw
-                                        .replaceAll(RegExp(r'\s+'), ' ')
-                                        .trim()
-                                        .split(' ')
-                                        .where((w)=>w.isNotEmpty)
-                                        .toList();
-                                    final start = wordCursor;
-                                    final end = wordCursor + wordsInPara.length - 1;
-                                    if (startIndex >= start && startIndex <= end) {
-                                      paragraphText = raw.trim();
-                                      break;
-                                    }
-                                    wordCursor = end + 1;
-                                  }
-                                  paragraphText ??= paraRaw.isNotEmpty ? paraRaw.first.trim() : cleanedWords[startIndex];
-                                  // Kürzen für Vorschau
-                                  final preview = paragraphText.length > 260 ? paragraphText.substring(0, 260).trim() + '…' : paragraphText;
-                                  return Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(top:4.0),
-                                      child: Text(
-                                        preview,
-                                        style: const TextStyle(fontStyle: FontStyle.italic, height: 1.3),
+      builder: (c) {
+        return Dialog(
+          child: StatefulBuilder(
+            builder: (c2, setStateDialog) {
+              return SingleChildScrollView(
+                padding: MediaQuery.of(c).viewInsets,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Vorlesen', style: Theme.of(c).textTheme.titleLarge),
+                            IconButton(onPressed: () => Navigator.of(c).pop(), icon: const Icon(Icons.close)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _LanguageDropdown(
+                          languages: _availableLanguages,
+                          value: _selectedLanguage,
+                          onChanged: (val) {
+                            setStateDialog(() => _selectedLanguage = val);
+                            _updateSelectedVoiceForLanguage();
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        (_parsedVoices.isEmpty)
+                            ? const SizedBox(height: 8, child: Center(child: Text('Lade Stimmen...')))
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  DropdownButtonFormField<String>(
+                                    decoration: const InputDecoration(labelText: 'Stimme'),
+                                    value: _parsedVoices.any((v) => v['id'] == _selectedVoiceId) ? _selectedVoiceId : (_parsedVoices.isNotEmpty ? _parsedVoices.first['id'] : null),
+                                    items: [
+                                      for (final v in _parsedVoices)
+                                        DropdownMenuItem(value: v['id'], child: Text(v['label'] ?? v['id'] ?? '', overflow: TextOverflow.ellipsis)),
+                                    ],
+                                    onChanged: (val) => setState(() => _selectedVoiceId = val),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 8),
+                                  Text('Stimm-Parameter', style: Theme.of(context).textTheme.labelLarge),
+                                  const SizedBox(height: 8),
+                                  Row(children: [Expanded(child: Text('Tempo')), SizedBox(width: 72, child: Text('${_uiRate.toStringAsFixed(2)}'))]),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPanDown: (_) { setStateDialog(() => _sliderActive = true); },
+                                      onPanCancel: () { setStateDialog(() => _sliderActive = false); },
+                                      onPanEnd: (_) { setStateDialog(() => _sliderActive = false); },
+                                      child: Slider(
+                                        value: _uiRate,
+                                        min: 0.2,
+                                        max: 1.2,
+                                        onChangeStart: (v) {
+                                          debugPrint('Slider rate start $v');
+                                          setStateDialog(() => _sliderActive = true);
+                                        },
+                                        onChanged: (v) {
+                                          debugPrint('Slider rate changed $v');
+                                          setStateDialog(() => _uiRate = v);
+                                        },
+                                        onChangeEnd: (v) {
+                                          debugPrint('Slider rate end $v');
+                                          setStateDialog(() => _sliderActive = false);
+                                        },
                                       ),
                                     ),
-                                  );
-                                }),
-                                const SizedBox(height:8),
-                                FilledButton.tonal(
-                                  onPressed: () async {
-                                    await tts.configure(rate: rate, pitch: pitch, language: selLang, voiceId: selVoice, mode: _mode);
-                                    await tts.start(_plainMarkdown(), overrideMode: _mode, startWord: startIndex);
-                                    if (context.mounted) Navigator.pop(context); // Dialog schließen nach Start
-                                  },
-                                  child: const Text('Ab hier vorlesen'),
-                                ),
-                                const Divider(height:24),
-                              ],
-                            ),
-                        ],
-                      );
-                    });
-                  }),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(child: OutlinedButton.icon(icon: const Icon(Icons.stop), label: const Text('Stop'), onPressed: ()=> tts.stop())),
-                      const SizedBox(width: 12),
-                      Expanded(child: FilledButton.icon(icon: const Icon(Icons.play_arrow), label: const Text('Start'), onPressed: () async {
-                        await tts.configure(rate: rate, pitch: pitch, language: selLang, voiceId: selVoice, mode: _mode);
-                        await tts.start(_plainMarkdown(), overrideMode: _mode, startWord: 0);
-                        if (context.mounted) Navigator.pop(context); // Dialog schließen
-                      })),
-                    ],
+                                  ),
+                                  Row(children: [Expanded(child: Text('Pitch')), SizedBox(width: 72, child: Text('${_uiPitch.toStringAsFixed(2)}'))]),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPanDown: (_) { setStateDialog(() => _sliderActive = true); },
+                                      onPanCancel: () { setStateDialog(() => _sliderActive = false); },
+                                      onPanEnd: (_) { setStateDialog(() => _sliderActive = false); },
+                                      child: Slider(
+                                        value: _uiPitch,
+                                        min: 0.5,
+                                        max: 2.0,
+                                        onChangeStart: (v) {
+                                          debugPrint('Slider pitch start $v');
+                                          setStateDialog(() => _sliderActive = true);
+                                        },
+                                        onChanged: (v) {
+                                          debugPrint('Slider pitch changed $v');
+                                          setStateDialog(() => _uiPitch = v);
+                                        },
+                                        onChangeEnd: (v) {
+                                          debugPrint('Slider pitch end $v');
+                                          setStateDialog(() => _sliderActive = false);
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(children: [
+                                    ElevatedButton.icon(
+                                      icon: const Icon(Icons.check),
+                                      label: const Text('Anwenden'),
+                                      onPressed: (_selectedVoiceId == null && _selectedLanguage == null)
+                                          ? null
+                                          : () async {
+                                              try {
+                                                final paragraphMs = _uiUseParagraphPause ? _uiParagraphPause : 0;
+                                                await _tts.configure(
+                                                  language: _selectedLanguage,
+                                                  voiceId: _selectedVoiceId,
+                                                  rate: _uiRate,
+                                                  pitch: _uiPitch,
+                                                  chunkPauseMs: _uiChunkPause,
+                                                  paragraphPauseMs: paragraphMs,
+                                                );
+                                                if (mounted) setState(() => _speaking = _tts.status.value.playing);
+                                              } catch (e, st) {
+                                                debugPrint('Apply voice error: $e\n$st');
+                                              }
+                                            },
+                                    ),
+                                    const SizedBox(width: 12),
+                                    ElevatedButton.icon(
+                                      icon: const Icon(Icons.volume_up),
+                                      label: const Text('Vorschau'),
+                                      onPressed: (_selectedVoiceId == null && _selectedLanguage == null)
+                                          ? null
+                                          : () async {
+                                              try {
+                                                final paragraphMs = _uiUseParagraphPause ? _uiParagraphPause : 0;
+                                                await _tts.configure(
+                                                  language: _selectedLanguage,
+                                                  voiceId: _selectedVoiceId,
+                                                  rate: _uiRate,
+                                                  pitch: _uiPitch,
+                                                  chunkPauseMs: _uiChunkPause,
+                                                  paragraphPauseMs: paragraphMs,
+                                                );
+                                                await _tts.start('Dies ist eine kurze Stimmprobe.');
+                                              } catch (e, st) {
+                                                debugPrint('Voice preview error: $e\n$st');
+                                              }
+                                            },
+                                    ),
+                                  ])
+                                ],
+                              ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
-          );
-        });
-      }
-    ).whenComplete(() { _ttsDialogOpen = false; });
-  }
+                ),
+              );
+          },
+        ),
+      );
+    },
+  );
+}
+
 }
 
 /// Freundlichere Sprach-Auswahl mit Flaggen und kompaktem Default.

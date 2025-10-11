@@ -73,7 +73,8 @@ class AppConfig {
     if (owner != null && owner.isNotEmpty) _owner = owner;
     if (repo != null && repo.isNotEmpty) _repo = repo;
     if (branch != null && branch.isNotEmpty) _branch = branch;
-    if (dirPath != null && dirPath.isNotEmpty) _dirPath = dirPath;
+    // dirPath darf bewusst auch leer sein (Root). Daher ohne isNotEmpty prüfen.
+    if (dirPath != null) _dirPath = dirPath;
     if (token != null && token.isNotEmpty) _runtimeToken = token;
   }
 

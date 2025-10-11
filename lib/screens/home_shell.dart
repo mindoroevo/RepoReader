@@ -65,6 +65,9 @@ import '../config.dart';
 import '../utils/naming.dart';
 import 'change_detail_screen.dart';
 import 'about_screen.dart';
+import 'onboarding_screen.dart';
+import '../widgets/tips_overlay.dart';
+import '../services/tips_service.dart';
 // sanitizeForPreview direkt aus change_tracker_service exportiert
 // sanitizeForPreview kommt aus obiger Service-Import (zweiter show-Import entfernt)
 // Removed all_in_one_screen ("Alles von oben nach unten") entry from drawer
@@ -91,6 +94,7 @@ class _HomeShellState extends State<HomeShell> {
   Set<String> _availableFileExts = {}; // alle außer md
   bool _configured = true; // wird im init() verifiziert; true = es existiert gespeicherte Quelle
   static const _prefsActiveExtsKey = 'pref:activeExtensions';
+  bool _postConfigCheckDone = false;
   // Haupt-Ansichtsmodus: README Navigation, flache Alle-Dateien-Liste oder Baum-Explorer
   _MainViewMode _mode = _MainViewMode.readmes;
 
@@ -132,19 +136,31 @@ class _HomeShellState extends State<HomeShell> {
       final b = prefs.getString('cfg:branch');
       final d = prefs.getString('cfg:dir');
       final t = prefs.getString('cfg:token');
+      final onboardingSeen = prefs.getBool('pref:onboardingSeen') ?? false;
       final hasConfig = (o!=null && r!=null); // owner & repo notwendig – Branch / dir werden notfalls später gefüllt
       if (hasConfig) {
         AppConfig.configure(owner:o, repo:r, branch:b, dirPath:d, token:t);
         _configured = true;
       } else {
         setState(() { _configured = false; _loading = false; });
-        WidgetsBinding.instance.addPostFrameCallback((_){
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
-          Navigator.push(context, MaterialPageRoute(builder: (_) => SetupScreen(onApplied: () {
-            // Nach erstmaliger Konfiguration sofort alles neu laden (inkl. Favoriten / Changes / Polling)
-            setState(() { _configured = true; _loading = true; _files = []; _allFiles = []; _changeSummary = null; });
-            _initAfterConfig();
-          })));
+          if (!onboardingSeen) {
+            final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const OnboardingScreen()));
+            if (!mounted) return;
+            if (result == 'setup') {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => SetupScreen(onApplied: () {
+                setState(() { _configured = true; _loading = true; _files = []; _allFiles = []; _changeSummary = null; });
+                _initAfterConfig();
+              })));
+            }
+          } else {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => SetupScreen(onApplied: () {
+              // Nach erstmaliger Konfiguration sofort alles neu laden (inkl. Favoriten / Changes / Polling)
+              setState(() { _configured = true; _loading = true; _files = []; _allFiles = []; _changeSummary = null; });
+              _initAfterConfig();
+            })));
+          }
         });
         return;
       }
@@ -167,13 +183,42 @@ class _HomeShellState extends State<HomeShell> {
     ChangeSummary? summary;
     try { summary = await tracker.detectChanges(); } catch (_) {}
     await _load();
-  await _startPollingIfEnabled();
+    await _startPollingIfEnabled();
+    // Prepare notification permission if enabled by preference
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final notifyPref = prefs.getBool('pref:notifyChanges') ?? true;
+      if (notifyPref) { await NotificationService.init(); }
+    } catch (_) {}
     if (summary != null && mounted) {
       setState(()=> _changeSummary = summary);
       final prefs = await SharedPreferences.getInstance();
       final show = prefs.getBool('pref:showChangeDialog') ?? true;
       if (show) _showChangesDialog(summary);
+      // Send a system notification if enabled
+      final notify = prefs.getBool('pref:notifyChanges') ?? true;
+      if (notify) {
+        try { await NotificationService.showChangeNotification(count: summary.files.length); } catch (_) {}
+      }
     }
+    // Show onboarding once even if already configured
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seen = prefs.getBool('pref:onboardingSeen') ?? false;
+      if (!seen && mounted) {
+        // fire-and-forget; not awaiting keeps UI responsive
+        // ignore: use_build_context_synchronously
+        // We don't care about the result here
+        // ignore: unawaited_futures
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const OnboardingScreen()));
+      }
+    } catch(_) {}
+    // Show home tips once
+    try {
+      if (mounted && await TipsService.shouldShow('home')) {
+        WidgetsBinding.instance.addPostFrameCallback((_) { _showHomeTips(); });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -188,8 +233,15 @@ class _HomeShellState extends State<HomeShell> {
     // einen 1-Minuten-Ticker, der in `_maybePoll` dynamisch entscheidet ob ein
     // echter Poll-Lauf stattfinden soll (Backoff).
     final prefs = await SharedPreferences.getInstance();
-    _pollBaseMinutes = prefs.getInt('pref:pollMinutes') ?? 0;
-    final notify = prefs.getBool('pref:notifyChanges') ?? false;
+    // Defaults: always on by default
+    if (!prefs.containsKey('pref:pollMinutes')) {
+      await prefs.setInt('pref:pollMinutes', 5);
+    }
+    if (!prefs.containsKey('pref:notifyChanges')) {
+      await prefs.setBool('pref:notifyChanges', true);
+    }
+    _pollBaseMinutes = prefs.getInt('pref:pollMinutes') ?? 5;
+    final notify = prefs.getBool('pref:notifyChanges') ?? true;
     if (_pollBaseMinutes <= 0) { _pollTimer?.cancel(); return; }
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(minutes: 1), (_) => _maybePoll(notify));
@@ -452,6 +504,21 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Safety net: if prefs now contain config but UI still shows first-run, auto-initialize once
+    if (!_configured && !_postConfigCheckDone) {
+      _postConfigCheckDone = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final o = prefs.getString('cfg:owner');
+          final r = prefs.getString('cfg:repo');
+          if (o != null && r != null) {
+            if (mounted) setState(() { _configured = true; _loading = true; });
+            await _initAfterConfig();
+          }
+        } catch (_) {}
+      });
+    }
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final hasChanges = _changeSummary != null && _changeSummary!.files.isNotEmpty;
@@ -461,6 +528,7 @@ class _HomeShellState extends State<HomeShell> {
         title: Text(AppLocalizations.of(context)!.appTitle),
         actions: [
           IconButton(
+            key: _kModeBtn,
             tooltip: (){
               switch(_mode){
                 case _MainViewMode.readmes: return 'Alle Dateien (flach)';
@@ -484,11 +552,13 @@ class _HomeShellState extends State<HomeShell> {
             }),
           ),
           IconButton(
+            key: _kFilterBtn,
             tooltip: 'Dateitypen ein/ausblenden',
             icon: const Icon(Icons.filter_alt),
             onPressed: _openExtensionToggleSheet,
           ),
           IconButton(
+            key: _kSearchBtn,
             tooltip: 'Suche',
             icon: const Icon(Icons.search),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
@@ -519,6 +589,11 @@ class _HomeShellState extends State<HomeShell> {
                   onPressed: () => _openChangesSheet(),
                 );
               }),
+          IconButton(
+            tooltip: 'Hilfe',
+            icon: const Icon(Icons.help_outline),
+            onPressed: _showHomeTips,
+          ),
         ],
       ),
       drawer: Drawer(
@@ -545,6 +620,11 @@ class _HomeShellState extends State<HomeShell> {
               setState(() { _loading = true; _files = []; _allFiles = []; _changeSummary = null; });
               _initAfterConfig();
             })) ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.help_outline),
+            title: Text(AppLocalizations.of(context)!.tutorial),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OnboardingScreen())),
           ),
           ListTile(
             leading: const Icon(Icons.settings),
@@ -758,6 +838,27 @@ class _HomeShellState extends State<HomeShell> {
                   )),
       ),
     );
+  }
+
+  // --- Tips ---
+  final _kModeBtn = GlobalKey();
+  final _kFilterBtn = GlobalKey();
+  final _kSearchBtn = GlobalKey();
+
+  Future<void> _showHomeTips() async {
+    final l = AppLocalizations.of(context)!;
+    await showTipsOverlay(
+      context,
+      tips: [
+        TipTarget(key: _kModeBtn, title: l.tipHomeModeTitle, body: l.tipHomeModeBody),
+        TipTarget(key: _kFilterBtn, title: l.tipHomeFilterTitle, body: l.tipHomeFilterBody),
+        TipTarget(key: _kSearchBtn, title: l.tipHomeSearchTitle, body: l.tipHomeSearchBody),
+      ],
+      skipLabel: l.onbSkip,
+      nextLabel: l.onbNext,
+      doneLabel: l.onbDone,
+    );
+    await TipsService.markShown('home');
   }
 }
 
@@ -1672,4 +1773,3 @@ class _OnbStep extends StatelessWidget {
 }
 
 // _MiniLink Klasse entfernt
-

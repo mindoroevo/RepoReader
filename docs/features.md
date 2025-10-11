@@ -4,13 +4,15 @@
 
 ## Kernfunktionen
 - Repository-Browser (öffentliche & private Repos*)
-- Dateibaum & Markdown Rendering
-- Volltextsuche (lokal, im geladenen Kontext)
-- Offline Snapshot Speicherung
-- Text-to-Speech (Wort / Satz / Block Modus)
-- Startpunkt-Auswahl beim Vorlesen
-- Einstellungen: Theme, Sprache, TTS-Parameter
-- Token-Integration für private Repos / Rate Limit Erhöhung
+- README‑Navigation, flache Liste, Explorer (Baum)
+- Universeller Datei‑Browser (alle Dateitypen, Kategorien, Vorschau)
+- Suche: Basis (Markdown) und Erweiterte (alle Dateien, Inhalt + Dateiname)
+- Offline Snapshot + Caching
+- Text‑to‑Speech (Wort / Satz / Block) inkl. Startversatz
+- Änderungs‑Erkennung (Added/Modified/Removed) mit zeilenbasiertem Diff
+- Benachrichtigungen bei Änderungen (optional)
+- Einstellungen: Theme, Sprache, TTS‑Parameter, Polling/Notifications
+- Token‑Integration (PAT) & Device Flow Login
 
 (*) Private Repos nur bei freiwilliger Eingabe eines Personal Access Token.
 
@@ -21,9 +23,9 @@
 - Persistente Speicherung von Sprache, Stimme, Rate, Pitch
 
 ## Offline Snapshot
-- Lokale Kopie relevanter Dateien
-- Hash-/SHA Tracking für Änderungsanzeige (geplant)
-- Manuelles Entfernen jederzeit möglich
+- Vollständiger Snapshot im App‑Dokumentenordner (inkl. Metadaten)
+- Lesen ohne Netz, Bildpfade werden lokal aufgelöst
+- Snapshot erstellen/neu erstellen/löschen aus den Einstellungen
 
 ## Performance / UX
 - Lazy Laden von Dateien
@@ -32,12 +34,12 @@
 
 ## Sicherheit & Datenschutz
 - Kein Tracking, keine Analytics SDKs
-- Token bleibt lokal (SharedPreferences; Secure Storage geplant)
+- Token lokal; Secure Storage für private Tokens (Service vorhanden)
 - Keine Server, direkter GitHub API Zugriff
 
 ## Geplante Erweiterungen
-- Erweiterter Offline Snapshot Manager
-- Diff Ansicht / Änderungsindikatoren
-- Besseres Voice-Fallback Handling
-- SSML Unterstützung / Atempausen
-- Mehr Formatierungsoptionen für Codeblöcke
+- Persistenter Index für schnelle Suche
+- Word‑Level‑Diff & visuelles Inline‑Diffing
+- SSML Unterstützung / feinere Pausensteuerung
+- Syntax‑Highlighting für Code
+- Snapshot‑Manager mit Größe, Selektion, Delta‑Updates

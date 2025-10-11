@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Network permission required for GitHub API calls (was missing in release build) -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 13+ notifications permission for local notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="RepoReader"
         android:name="${applicationName}"

@@ -29,6 +29,7 @@ import '../config.dart';
 import '../main.dart';
 import '../localization_controller.dart';
 import '../services/offline_snapshot_service.dart';
+import '../services/notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -48,13 +49,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Lädt gespeicherte Präferenzen.
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    // Defaults: Polling 5 Min, Notifications on
+    final poll = prefs.getInt('pref:pollMinutes');
+    if (poll == null) { await prefs.setInt('pref:pollMinutes', 5); }
+    final notify = prefs.getBool('pref:notifyChanges');
+    if (notify == null) { await prefs.setBool('pref:notifyChanges', true); }
     setState(() { 
       _showChangeDialog = prefs.getBool('pref:showChangeDialog') ?? true; 
-      _pollMinutes = prefs.getInt('pref:pollMinutes') ?? 0; 
-      _notifyEnabled = prefs.getBool('pref:notifyChanges') ?? false; 
+      _pollMinutes = prefs.getInt('pref:pollMinutes') ?? 5; 
+      _notifyEnabled = prefs.getBool('pref:notifyChanges') ?? true; 
       // Offline Flags
       _loading = false; 
     });
+    if (_notifyEnabled) { await NotificationService.init(); }
     _offlineEnabled = await OfflineSnapshotService.isOfflineEnabled();
     _snapshotExists = await OfflineSnapshotService.hasSnapshot();
     setState(() {});
@@ -136,7 +143,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: Text(l10n.systemNotificationOnChanges),
             subtitle: Text(l10n.systemNotificationOnChangesSubtitle),
             value: _notifyEnabled,
-            onChanged: (v) async { final prefs = await SharedPreferences.getInstance(); await prefs.setBool('pref:notifyChanges', v); setState(()=> _notifyEnabled = v); },
+            onChanged: (v) async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('pref:notifyChanges', v);
+              setState(()=> _notifyEnabled = v);
+              if (v) { await NotificationService.init(); }
+            },
           ),
           const SizedBox(height: 24),
           Text(l10n.cacheVersion(AppConfig.cacheVersion.toString()), style: const TextStyle(fontSize: 12, color: Colors.grey)),

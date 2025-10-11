@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import '../services/private_auth_service.dart';
 
@@ -59,33 +61,62 @@ class _DeviceLoginWebViewState extends State<DeviceLoginWebView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('GitHub Anmeldung')),
-      body: _verificationUri == null ? Center(child: Text(_status ?? 'Starte...')) : Column(
-        children: [
-          if (_userCode != null) Padding(
-            padding: const EdgeInsets.all(8),
-            child: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children:[
-              const Icon(Icons.key, size:16),
-              Text('Code: ', style: const TextStyle(fontWeight: FontWeight.bold)),
-              SelectableText(_userCode!, style: const TextStyle(fontFamily: 'monospace', fontSize: 16)),
-              if (!_done) const SizedBox(width:8),
-              if (!_done) const CircularProgressIndicator(strokeWidth:2),
-            ]),
-          ),
-          Expanded(
-            child: WebViewWidget(
-              controller: WebViewController()
-                ..setJavaScriptMode(JavaScriptMode.unrestricted)
-                ..loadRequest(Uri.parse(_verificationUri!)),
-            ),
-          ),
+    final supportsWebView = !kIsWeb && (
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS
+    );
+
+    Widget content() {
+      if (_verificationUri == null) {
+        return Center(child: Text(_status ?? 'Starte...'));
+      }
+      final header = Padding(
+        padding: const EdgeInsets.all(8),
+        child: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children:[
+          const Icon(Icons.key, size:16),
+          const Text('Code: ', style: TextStyle(fontWeight: FontWeight.bold)),
+          SelectableText(_userCode ?? '-', style: const TextStyle(fontFamily: 'monospace', fontSize: 16)),
+          if (!_done) const SizedBox(width:8),
+          if (!_done) const CircularProgressIndicator(strokeWidth:2),
+        ]),
+      );
+
+      if (supportsWebView) {
+        return Column(children:[
+          if (_userCode != null) header,
+          Expanded(child: WebViewWidget(controller: WebViewController()
+            ..setJavaScriptMode(JavaScriptMode.unrestricted)
+            ..loadRequest(Uri.parse(_verificationUri!)),
+          )),
           if (_status != null) Padding(
             padding: const EdgeInsets.all(8),
             child: Text(_status!, style: TextStyle(fontSize:12, color: _done ? Colors.green : null)),
           )
-        ],
-      ),
+        ]);
+      }
+
+      // Fallback: externen Browser nutzen
+      return Column(children:[
+        if (_userCode != null) header,
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: FilledButton.icon(
+            icon: const Icon(Icons.open_in_new),
+            label: const Text('Anmeldeseite im Browser öffnen'),
+            onPressed: () => launchUrl(Uri.parse(_verificationUri!), mode: LaunchMode.externalApplication),
+          ),
+        ),
+        if (_status != null) Padding(
+          padding: const EdgeInsets.all(8),
+          child: Text(_status!, style: TextStyle(fontSize:12, color: _done ? Colors.green : null)),
+        )
+      ]);
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('GitHub Anmeldung')),
+      body: content(),
     );
   }
 }

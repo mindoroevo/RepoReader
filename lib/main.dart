@@ -21,6 +21,7 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'theme.dart';
 import 'screens/home_shell.dart';
+import 'screens/language_intro_screen.dart';
 import 'localization_controller.dart';
 
 Future<void> main() async {
@@ -42,11 +43,12 @@ Future<void> main() async {
     _ => ThemeMode.system,
   };
   
-  // Locale laden (Standard: Englisch)
-  final storedLocale = prefs.getString('pref:locale') ?? 'en';
-  final locale = Locale(storedLocale);
+  // Locale laden; wenn noch nie gewählt, zeige zuerst Sprachwahl
+  final storedLocale = prefs.getString('pref:locale');
+  final locale = Locale(storedLocale ?? 'en');
+  final needsLanguageSelection = storedLocale == null;
   
-  runApp(WikiApp(initialMode: mode, initialLocale: locale, prefs: prefs));
+  runApp(WikiApp(initialMode: mode, initialLocale: locale, prefs: prefs, needsLanguageSelection: needsLanguageSelection));
 }
 
 /// Verwaltet aktuellen ThemeMode und persistiert Änderungen.
@@ -83,10 +85,12 @@ class WikiApp extends StatelessWidget {
     required this.initialMode,
     required this.initialLocale,
     required this.prefs,
+    required this.needsLanguageSelection,
   });
   final ThemeMode initialMode;
   final Locale initialLocale;
   final SharedPreferences prefs;
+  final bool needsLanguageSelection;
   @override
   Widget build(BuildContext context) {
     final themeController = ThemeController(initialMode, prefs);
@@ -103,7 +107,7 @@ class WikiApp extends StatelessWidget {
             theme: lightTheme,
             darkTheme: darkTheme,
             themeMode: themeController.mode,
-            home: const HomeShell(),
+            home: needsLanguageSelection ? const LanguageIntroScreen() : const HomeShell(),
             debugShowCheckedModeBanner: false,
             localizationsDelegates: const [
               AppLocalizations.delegate,

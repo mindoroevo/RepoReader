@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../services/wiki_service.dart';
 import '../services/private_auth_service.dart';
+import '../widgets/tips_overlay.dart';
+import '../services/tips_service.dart';
 import 'device_login_webview.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -41,6 +43,7 @@ class _SetupScreenState extends State<SetupScreen> {
   bool _searchLoading = false;
   String? _searchError;
   Timer? _debounce;
+  Timer? _autoApplyDebounce;
 
   static const _minSearchLen = 3;
 
@@ -65,6 +68,11 @@ class _SetupScreenState extends State<SetupScreen> {
   void initState() {
     super.initState();
     _initSecureToken();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted && await TipsService.shouldShow('setup')) {
+        _showSetupTips();
+      }
+    });
   }
 
   Future<void> _initSecureToken() async {
@@ -81,6 +89,7 @@ class _SetupScreenState extends State<SetupScreen> {
     _token.dispose();
     _repoSearch.dispose();
     _debounce?.cancel();
+    _autoApplyDebounce?.cancel();
     super.dispose();
   }
 
@@ -337,7 +346,12 @@ class _SetupScreenState extends State<SetupScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: Text(l.changeSource)),
+      appBar: AppBar(
+        title: Text(l.changeSource),
+        actions: [
+          IconButton(icon: const Icon(Icons.help_outline), onPressed: _showSetupTips),
+        ],
+      ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16,8,16,12),
@@ -347,7 +361,7 @@ class _SetupScreenState extends State<SetupScreen> {
               if (_saving) const LinearProgressIndicator(minHeight: 2),
               const SizedBox(height: 10),
               Row(children:[
-                Expanded(child: ElevatedButton.icon(onPressed: _saving ? null : _save, icon: const Icon(Icons.save), label: Text(l.applyButton))),
+                Expanded(child: ElevatedButton.icon(key: _kApplyBtn, onPressed: _saving ? null : _save, icon: const Icon(Icons.save), label: Text(l.applyButton))),
                 const SizedBox(width:10),
                 TextButton(onPressed: _saving ? null : _reset, child: Text(l.reset)), 
                 const SizedBox(width:4),
@@ -459,13 +473,24 @@ class _SetupScreenState extends State<SetupScreen> {
                 ]),
                 const SizedBox(height: 14),
                 TextField(
+                  key: _kUrlField,
                   controller: _url,
                   decoration: InputDecoration(
                     labelText: AppLocalizations.of(context)!.githubLink,
                     hintText: 'https://github.com/OWNER/REPO …',
                     errorText: _error,
                   ),
-                  onChanged: (_) { if (_error != null) setState(()=> _error = null); setState(()=>{}); },
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _save(),
+                  onChanged: (_) {
+                    if (_error != null) setState(()=> _error = null);
+                    setState(()=>{});
+                    _autoApplyDebounce?.cancel();
+                    final txt = _url.text.trim();
+                    if (txt.startsWith('https://github.com/') || txt.startsWith('https://raw.githubusercontent.com/')) {
+                      _autoApplyDebounce = Timer(const Duration(milliseconds: 1200), () { if (mounted && !_saving) { _save(); } });
+                    }
+                  },
                 ),
                 const SizedBox(height: 14),
                 _buildSearchSection(),
@@ -504,20 +529,20 @@ class _SetupScreenState extends State<SetupScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
   if (_pendingOwner == null) Text(AppLocalizations.of(context)!.chooseRepositoryFirst, style: const TextStyle(fontSize:12,fontStyle: FontStyle.italic)),
-        if (_pendingOwner != null) ...[
-          Row(children:[
-            Text(AppLocalizations.of(context)!.suggestions, style: Theme.of(context).textTheme.titleSmall),
-            const Spacer(),
-            if (_treeLoading) const SizedBox(height:16,width:16,child:CircularProgressIndicator(strokeWidth:2)),
-            if (!_treeLoading) TextButton(onPressed: _loadRepoTree, child: Text(AppLocalizations.of(context)!.rescan)),
-          ]),
+            if (_pendingOwner != null) ...[
+              Row(children:[
+                Text(AppLocalizations.of(context)!.suggestions, style: Theme.of(context).textTheme.titleSmall),
+                const Spacer(),
+                if (_treeLoading) const SizedBox(height:16,width:16,child:CircularProgressIndicator(strokeWidth:2)),
+                if (!_treeLoading) TextButton(onPressed: _loadRepoTree, child: Text(AppLocalizations.of(context)!.rescan)),
+              ]),
           const SizedBox(height:8),
           if (_treeError != null) Text('${AppLocalizations.of(context)!.errorPrefix} $_treeError', style: const TextStyle(color: Colors.red, fontSize:12)),
           Wrap(spacing: 8, runSpacing: 8, children: _buildDirSuggestionChips()),
           const SizedBox(height: 10),
           Text(AppLocalizations.of(context)!.selectionLabel((_selectedDir ?? 'docs')), style: const TextStyle(fontSize:12)),
           const SizedBox(height: 6),
-          TextButton.icon(onPressed: () => _showFullDirList(), icon: const Icon(Icons.list), label: Text(AppLocalizations.of(context)!.showAllDirectories)),
+          TextButton.icon(key: _kDirBtn, onPressed: () => _showFullDirList(), icon: const Icon(Icons.list), label: Text(AppLocalizations.of(context)!.showAllDirectories)),
         ]
       ],
     );
@@ -547,7 +572,10 @@ class _SetupScreenState extends State<SetupScreen> {
     return list.map((n) => ChoiceChip(
       label: Text(n.displayName),
       selected: (_selectedDir ?? 'docs') == n.path,
-      onSelected: (_) => setState(()=> _selectedDir = n.path),
+      onSelected: (_) {
+        setState(()=> _selectedDir = n.path);
+        _save();
+      },
     )).toList();
   }
 
@@ -578,7 +606,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       dense: true,
                       leading: Icon(sel? Icons.check_box : Icons.check_box_outline_blank, size:18),
                       title: Text(n.path, style: const TextStyle(fontFamily: 'monospace', fontSize:12)),
-                      onTap: () { setState(()=> _selectedDir = n.path); Navigator.pop(ctx); },
+                      onTap: () { setState(()=> _selectedDir = n.path); Navigator.pop(ctx); _save(); },
                     );
                   },
                 ),
@@ -595,6 +623,7 @@ class _SetupScreenState extends State<SetupScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextField(
+          key: _kTokenField,
           controller: _token,
           decoration: InputDecoration(
             labelText: AppLocalizations.of(context)!.tokenOptionalHigherLimits,
@@ -626,6 +655,31 @@ class _SetupScreenState extends State<SetupScreen> {
         ),
       ],
     );
+  }
+
+  // ---- Tips ----
+  final _kUrlField = GlobalKey();
+  final _kDirBtn = GlobalKey();
+  final _kApplyBtn = GlobalKey();
+  final _kTokenField = GlobalKey();
+  final _kSearchField = GlobalKey();
+
+  Future<void> _showSetupTips() async {
+    final l = AppLocalizations.of(context)!;
+    await showTipsOverlay(
+      context,
+      tips: [
+        TipTarget(key: _kUrlField, title: l.tipSetupLinkTitle, body: l.tipSetupLinkBody),
+        TipTarget(key: _kSearchField, title: l.tipSetupSearchTitle, body: l.tipSetupSearchBody),
+        TipTarget(key: _kDirBtn, title: l.tipSetupDirTitle, body: l.tipSetupDirBody),
+        TipTarget(key: _kApplyBtn, title: l.tipSetupApplyTitle, body: l.tipSetupApplyBody),
+        TipTarget(key: _kTokenField, title: l.tipSetupTokenTitle, body: l.tipSetupTokenBody),
+      ],
+      skipLabel: l.onbSkip,
+      nextLabel: l.onbNext,
+      doneLabel: l.onbDone,
+    );
+    await TipsService.markShown('setup');
   }
 
   void _showTokenHelp() {
@@ -719,6 +773,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
             const SizedBox(height: 8),
             TextField(
+              key: _kSearchField,
               controller: _repoSearch,
               decoration: InputDecoration(
                 isDense: true,

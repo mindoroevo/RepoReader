@@ -30,6 +30,10 @@ class _PageScreenState extends State<PageScreen> {
   bool _fromCache = false;
   bool _loading = true;
   String? _error;
+  // Anchored rendering
+  final ScrollController _listController = ScrollController();
+  final Map<String, GlobalKey> _anchorKeys = {};
+  List<_AnchoredSection> _sections = [];
   // TTS
   final _tts = TtsService.instance;
   List<String> _availableLanguages = [];
@@ -82,6 +86,8 @@ class _PageScreenState extends State<PageScreen> {
   final processed = preprocessMarkdown(txt, currentRepoPath: widget.repoPath);
   final toc = buildToc(processed);
   setState(() { _content = processed; _toc = toc; _fromCache = fromCache; _error = null; });
+  // rebuild anchored sections for TOC scroll
+  _buildAnchoredSections();
     } catch (e) {
       setState(() { _error = e.toString(); });
     } finally { setState(() => _loading = false); }
@@ -318,13 +324,12 @@ class _PageScreenState extends State<PageScreen> {
               ),
             );
           }
-          // Wieder normale Markdown-Darstellung verwenden
-          final scrollCtrl = ScrollController();
+          // Single-page markdown rendering (stable)
           return RefreshIndicator(
             onRefresh: _load,
             child: MarkdownView(
               content: _content,
-              controller: scrollCtrl,
+              controller: _listController,
               onInternalLink: (path) => _openInternal(path),
             ),
           );
@@ -386,7 +391,14 @@ class _PageScreenState extends State<PageScreen> {
   }
 
   void _scrollToAnchor(String anchor) {
-    // Noch nicht umgesetzt (TOC Scroll). Placeholder.
+    final key = _anchorKeys[anchor];
+    if (key?.currentContext == null) return;
+    Scrollable.ensureVisible(
+      key!.currentContext!,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+      alignment: 0.05,
+    );
   }
 
   void _openInternal(String internalPath) {
@@ -572,6 +584,50 @@ class _PageScreenState extends State<PageScreen> {
   );
 }
 
+}
+
+class _AnchoredSection {
+  final String anchor;
+  final String content;
+  _AnchoredSection(this.anchor, this.content);
+}
+
+extension on _PageScreenState {
+  void _buildAnchoredSections() {
+    _sections = [];
+    _anchorKeys.clear();
+    if (_content.trim().isEmpty) return;
+    // Split by lines and detect headings
+    final lines = _content.split('\n');
+    final headingRe = RegExp(r'^\s{0,3}(#{1,6})\s+(.+?)\s*$');
+    final used = <String,int>{};
+    final indices = <int>[];
+    final anchors = <String>[];
+    for (int i=0; i<lines.length; i++) {
+      final m = headingRe.firstMatch(lines[i]);
+      if (m != null) {
+        var text = m.group(2)!.trim();
+        // strip trailing hashes in ATX style
+        text = text.replaceFirst(RegExp(r'\s+#+\s*$'), '').trim();
+        var anchor = text.toLowerCase()
+            .replaceAll(RegExp(r'[^a-z0-9\u00C0-\u024f\s-]'), '')
+            .replaceAll(RegExp(r'\s+'), '-');
+        final count = used.update(anchor, (v)=>v+1, ifAbsent: ()=>0);
+        if (count > 0) anchor = '$anchor-$count';
+        indices.add(i);
+        anchors.add(anchor);
+        _anchorKeys.putIfAbsent(anchor, () => GlobalKey());
+      }
+    }
+    if (indices.isEmpty) return;
+    // Build sections from headings to next heading (exclusive)
+    for (int s=0; s<indices.length; s++) {
+      final start = indices[s];
+      final end = (s < indices.length-1) ? indices[s+1] : lines.length;
+      final slice = lines.sublist(start, end).join('\n');
+      _sections.add(_AnchoredSection(anchors[s], slice));
+    }
+  }
 }
 
 /// Freundlichere Sprach-Auswahl mit Flaggen und kompaktem Default.

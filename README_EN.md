@@ -543,6 +543,15 @@ Planned CI: `flutter analyze`, `flutter test --coverage`, optional golden tests.
 ---
 
 ## Roadmap
+The full roadmap is maintained in `docs/roadmap.md`. This section highlights the top priorities:
+
+- TOC scroll/jump
+- Word-level diff
+- Rate-limit UI (parse/display GitHub headers)
+- Syntax highlighting for code
+- Advanced search (fuzzy/ranking)
+
+Details and status: see docs/roadmap.md.
 | Priority | Item | Status |
 |----------|------|--------|
 | High | TOC scroll / jump | open |

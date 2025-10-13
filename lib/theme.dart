@@ -34,11 +34,16 @@ import 'package:flutter/material.dart';
 /// Hinweis: Einzelne Widgets (z.B. Diff-Markierung) setzen Inline-Farben für semantische Signalwerte.
 
 ColorScheme _tuneLight(ColorScheme base) => base.copyWith(
-  surface: const Color(0xFFF8F7FB),
+  // Warm, soft background and crisp cards
+  surface: const Color(0xFFF7F6FB),
   surfaceContainerLowest: Colors.white,
-  primary: base.primary,
+  surfaceContainerLow: const Color(0xFFFCFBFE),
+  surfaceContainer: const Color(0xFFF2F1F7),
+  primary: const Color(0xFF4958F0), // a touch more saturated for accents
+  secondary: const Color(0xFF5E6B8C),
   onPrimary: Colors.white,
   onSurface: const Color(0xFF14151A),
+  onSurfaceVariant: const Color(0xFF535666),
   outlineVariant: base.outlineVariant.withAlpha(140),
 );
 
@@ -52,22 +57,94 @@ ColorScheme _tuneDark(ColorScheme base) => base.copyWith(
 final lightTheme = ThemeData(
   useMaterial3: true,
   colorScheme: _tuneLight(ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.light)),
-  scaffoldBackgroundColor: const Color(0xFFF5F4F8),
+  scaffoldBackgroundColor: const Color(0xFFF6F5FA),
   textTheme: Typography.englishLike2021.apply(
     bodyColor: const Color(0xFF14151A),
     displayColor: const Color(0xFF14151A),
   ),
   cardTheme: CardTheme(
     color: Colors.white,
-    elevation: 1.5,
-    surfaceTintColor: Colors.white,
-    shadowColor: Colors.black.withAlpha(25),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    elevation: 2,
+    surfaceTintColor: Colors.transparent,
+    shadowColor: Colors.black.withAlpha(28),
+    margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: BorderSide(color: const Color(0xFF1F254033).withAlpha(28)),
+    ),
   ),
   appBarTheme: const AppBarTheme(
     elevation: 0,
-    scrolledUnderElevation: 2,
-    shadowColor: Colors.black26,
+    scrolledUnderElevation: 3,
+    backgroundColor: Colors.white,
+    foregroundColor: Color(0xFF14151A),
+    surfaceTintColor: Colors.transparent,
+    shadowColor: Colors.transparent,
+  ),
+  iconTheme: const IconThemeData(color: Color(0xFF4A4E60)),
+  dividerTheme: const DividerThemeData(
+    thickness: 1,
+    color: Color(0x14000000), // subtle
+    space: 24,
+  ),
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      elevation: 0,
+      backgroundColor: const Color(0xFF4958F0),
+      foregroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+    ),
+  ),
+  filledButtonTheme: FilledButtonThemeData(
+    style: FilledButton.styleFrom(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+    ),
+  ),
+  outlinedButtonTheme: OutlinedButtonThemeData(
+    style: OutlinedButton.styleFrom(
+      foregroundColor: const Color(0xFF4958F0),
+      side: const BorderSide(color: Color(0x334958F0)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+    ),
+  ),
+  inputDecorationTheme: InputDecorationTheme(
+    isDense: true,
+    filled: true,
+    fillColor: const Color(0xFFF2F1F7),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Color(0x14000000)),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Color(0x14000000)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Color(0xFF4958F0)),
+    ),
+  ),
+  listTileTheme: const ListTileThemeData(
+    iconColor: Color(0xFF4A4E60),
+    textColor: Color(0xFF14151A),
+    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    dense: false,
+  ),
+  chipTheme: ChipThemeData(
+    labelStyle: const TextStyle(color: Color(0xFF4A4E60), fontWeight: FontWeight.w600),
+    backgroundColor: const Color(0xFFF2F1F7),
+    selectedColor: const Color(0x334958F0),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: Color(0x14000000))),
+    elevation: 0,
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
   ),
   dividerColor: Colors.black12,
   shadowColor: Colors.black.withAlpha(40),

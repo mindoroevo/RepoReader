@@ -27,6 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../config.dart';
 import '../main.dart';
+import 'onboarding_screen.dart';
 import '../localization_controller.dart';
 import '../services/offline_snapshot_service.dart';
 import '../services/notification_service.dart';
@@ -194,6 +195,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (_snapshotStatus != null) Padding(
             padding: const EdgeInsets.only(top:8.0),
             child: Text(_snapshotStatus!, style: Theme.of(context).textTheme.bodySmall),
+          ),
+          const Divider(height: 40),
+          Text('Hilfe', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 6),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.help_outline),
+            title: Text(l10n.tutorial),
+            subtitle: Text('Kurze Einführung in die Bedienung'),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OnboardingScreen())),
           ),
         ],
       ),

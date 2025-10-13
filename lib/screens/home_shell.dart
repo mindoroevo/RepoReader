@@ -621,11 +621,7 @@ class _HomeShellState extends State<HomeShell> {
               _initAfterConfig();
             })) ),
           ),
-          ListTile(
-            leading: const Icon(Icons.help_outline),
-            title: Text(AppLocalizations.of(context)!.tutorial),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OnboardingScreen())),
-          ),
+          // Tutorial link moved into Settings screen for a cleaner drawer
           ListTile(
             leading: const Icon(Icons.settings),
             title: Text(AppLocalizations.of(context)!.settings),

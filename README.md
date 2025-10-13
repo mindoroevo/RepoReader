@@ -662,6 +662,15 @@ Geplante Maßnahmen: Parallel Prefetch ausgewählter Dateien nach Leerlauf; Pers
 ---
 
 ## Roadmap
+Die vollständige Roadmap wird zentral in `docs/roadmap.md` gepflegt. Dieser Abschnitt fasst die Top-Prioritäten kurz zusammen:
+
+- TOC Scroll/Jump (Inhaltsverzeichnis ansteuern)
+- Word-Level Diff (feinerer Vergleich)
+- Rate-Limit UI (Anzeige/Auswertung der GitHub-Header)
+- Syntax-Highlighting (Code-Darstellung)
+- Erweiterte Suche (Fuzzy/Ranking)
+
+Details und Status: siehe docs/roadmap.md.
 | Priorität | Item | Status |
 |----------|------|--------|
 | Hoch | TOC Scroll / Jump | offen |
